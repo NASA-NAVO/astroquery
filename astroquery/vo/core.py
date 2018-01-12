@@ -43,25 +43,79 @@ from . import conf
 
 __all__ = ['Registry', 'RegistryClass']
 
+#
+# Functions to help replace bytes with strings in astropy tables that came from VOTABLEs
+#
 
-def _prepare_service_request_string(json_obj):
+def sval(val):
     """
-    Takes a mashup JSON request object and turns it into a url-safe string.
-
+    Returns a string value for the given object.  When the object is an instanceof bytes,
+    utf-8 decoding is used.
+    
     Parameters
     ----------
-    json_obj : dict
-        A Mashup request JSON object (python dictionary).
-
+    val : object
+        The object to convert
+    
     Returns
     -------
-    response : str
-        URL encoded Mashup Request string.
+    string
+        The input value converted (if needed) to a string
     """
-    requestString = json.dumps(json_obj)
-    requestString = urlencode(requestString)
-    return "request="+requestString
+    if (isinstance(val, bytes)):
+        return str(val, 'utf-8')
+    else:
+        return str(val)
 
+# Create a version of sval() that operates on a whole column.
+svalv = np.vectorize(sval)
+
+def sval_whole_column(single_column):
+    """
+    Returns a new column whose values are the string versions of the values
+    in the input column.  The new column also keeps the metadata from the input column.
+    
+    Parameters
+    ----------
+    single_column : astropy.table.Column
+        The input column to stringify
+        
+    Returns
+    -------
+    astropy.table.Column
+        Stringified version of input column
+    """
+    new_col = svalv(single_column)
+    new_col.meta = single_column.meta
+    return new_col
+
+def stringify_table(t):
+    """
+    Substitutes strings for bytes values in the given table.
+    
+    Parameters
+    ----------
+    t : astropy.table.Table
+        An astropy table assumed to have been created from a VOTABLE.
+    
+    Returns
+    -------
+    astropy.table.Table
+        The same table as input, but with bytes-valued cells replaced by strings.
+    """
+    # This mess will look for columns that should be strings and convert them.
+    if (len(t) is 0):
+        return   # Nothing to convert
+    
+    scols = []
+    for col in t.columns:
+        colobj = t.columns[col]
+        if (colobj.dtype == 'object' and isinstance(t[colobj.name][0], bytes)):
+            scols.append(colobj.name)
+
+    for colname in scols:
+        t[colname] = sval_whole_column(t[colname])
+        
 
 
 class RegistryClass(BaseQuery):
@@ -142,11 +196,18 @@ class RegistryClass(BaseQuery):
         
     
         query_retcols="""
-          select res.short_name,cap.ivoid
+          select res.waveband,res.short_name,cap.ivoid,res.res_description,
+          int.access_url, res.reference_url
            from rr.capability cap
            natural join rr.resource res
+           natural join rr.interface int
            """
         
+        x = """
+            select b.waveband,b.short_name,a.ivoid,b.res_description,c.access_url,b.reference_url from rr.capability a 
+    natural join rr.resource b 
+    natural join rr.interface c
+        """
         query_where="where "
         
         wheres=[]
@@ -154,6 +215,15 @@ class RegistryClass(BaseQuery):
             wheres.append("cap.cap_type='{}'".format(service_type))
         if source is not "":
             wheres.append("cap.ivoid like '%{}%'".format(source))
+        if waveband is not "":
+            wheres.append("res.waveband like '%{}%'".format(waveband))
+        if (keyword is not ""):
+            keyword_where = """
+             (res.res_description like '%{}%' or
+            res.res_title like '%{}%' or
+            cap.ivoid like '%{}%') 
+            """.format(keyword, keyword, keyword)
+            wheres.append(keyword_where)
         
         query_where=query_where+logic_string.join(wheres)
         
@@ -196,7 +266,7 @@ class RegistryClass(BaseQuery):
         # String values in the VOTABLE are stored in the astropy Table as bytes instead 
         # of strings.  To makes accessing them more convenient, we will convert all those
         # bytes values to strings.
-        ### TSD stringify_table(aptable)
+        stringify_table(aptable)
         
         return aptable
 
