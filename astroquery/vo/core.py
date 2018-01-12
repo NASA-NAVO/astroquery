@@ -77,16 +77,18 @@ class RegistryClass(BaseQuery):
         self._REGISTRY_TAP_SYNC_URL = conf.registry_tap_url + "/sync"
 
 
-    def query(self):
+    def query(self, **kwargs):
         
         
-        adql = """
+        adql = self._build_adql(**kwargs)
+        x = """
             select b.waveband,b.short_name,a.ivoid,b.res_description,c.access_url,b.reference_url from rr.capability a 
             natural join rr.resource b 
             natural join rr.interface c
             where a.cap_type='SimpleImageAccess' and a.ivoid like 'ivo://%stsci%' 
             order by short_name
         """
+        print ('ADQL = ', adql)
         
         method = 'POST'
         url = self._REGISTRY_TAP_SYNC_URL
@@ -104,6 +106,65 @@ class RegistryClass(BaseQuery):
         aptable = self._astropy_table_from_votable_response(response)
         
         return aptable
+    
+    def _build_adql(self, **kwargs):
+        
+        # Default values
+        service_type=""
+        keyword=""
+        waveband=""
+        source=""
+        order_by=""
+        logic_string=" and "
+        
+        # Find the keywords we recognize
+        for key,val in kwargs.items():
+            if (key == 'service_type'):
+                service_type = val
+            elif (key == 'keyword'):
+                keyword = val
+            elif (key == 'waveband'):
+                waveband = val
+            elif (key == 'source'):
+                source = val
+            elif (key == 'order_by'):
+                order_by = val
+            elif (key == 'logic_string'):
+                logic_string = val
+        
+        ##
+        if "image" in service_type.lower():
+           service_type="simpleimageaccess"
+        elif "spectr" in service_type.lower():
+           service_type="simplespectralaccess"
+        elif "cone" in service_type.lower():
+           service_type="simpleconesearch"
+        
+    
+        query_retcols="""
+          select res.short_name,cap.ivoid
+           from rr.capability cap
+           natural join rr.resource res
+           """
+        
+        query_where="where "
+        
+        wheres=[]
+        if service_type is not "":
+            wheres.append("cap.cap_type='{}'".format(service_type))
+        if source is not "":
+            wheres.append("cap.ivoid like '%{}%'".format(source))
+        
+        query_where=query_where+logic_string.join(wheres)
+        
+        if order_by is not "":
+            query_order="order by {}".format(order_by)
+        else: query_order=""
+        
+        query=query_retcols+query_where+query_order
+        
+        return query
+
     
     def _astropy_table_from_votable_response(self, response):
         """
