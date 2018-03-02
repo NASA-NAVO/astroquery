@@ -14,7 +14,7 @@ import json
 import time
 import os
 import re
-import keyring
+#import keyring
 import io
 
 import numpy as np
@@ -142,9 +142,13 @@ class RegistryClass(BaseQuery):
             where a.cap_type='SimpleImageAccess' and a.ivoid like 'ivo://%stsci%' 
             order by short_name
         """
-        print ('ADQL = ', adql)
-        
-        method = 'POST'
+        if 'debug' in kwargs and kwargs['debug']==True: print ('Registry:  sending query ADQL = {}\n'.format(adql))
+
+        if 'method' in kwargs:
+            method = kewargs['method']
+        else:
+            method = 'POST'
+
         url = self._REGISTRY_TAP_SYNC_URL
         
         tap_params = {
@@ -155,7 +159,7 @@ class RegistryClass(BaseQuery):
         
         response = self._request(method, url, data=tap_params)
         
-        #print('Queried: ' + response.url)
+        if 'debug' in kwargs and kwargs['debug']==True: print('Queried: {}\n'.format(response.url))
         
         aptable = self._astropy_table_from_votable_response(response)
         
@@ -192,8 +196,9 @@ class RegistryClass(BaseQuery):
         elif "spectr" in service_type.lower():
            service_type="simplespectralaccess"
         elif "cone" in service_type.lower():
-           service_type="simpleconesearch"
-        
+           service_type="conesearch"
+        else:
+            service_type="tableaccess"
     
         query_retcols="""
           select res.waveband,res.short_name,cap.ivoid,res.res_description,
