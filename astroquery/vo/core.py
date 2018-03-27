@@ -197,7 +197,8 @@ class RegistryClass(BaseQuery):
            service_type="simplespectralaccess"
         elif "cone" in service_type.lower():
            service_type="conesearch"
-        
+        else:
+            service_type="tableaccess"
     
         query_retcols="""
           select res.waveband,res.short_name,cap.ivoid,res.res_description,
